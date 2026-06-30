@@ -1253,13 +1253,19 @@ export default function App() {
                     else setSelected(id);
                   }}
                   onContextMenu={e=>{ e.preventDefault(); setScambioId(id===scambioId?null:id); }}
+                  onTouchStart={()=>{
+                    const timer = setTimeout(()=>{ setScambioId(id===scambioId?null:id); if(navigator.vibrate) navigator.vibrate(40); }, 600);
+                    const cancel = ()=>{ clearTimeout(timer); document.removeEventListener("touchend",cancel); document.removeEventListener("touchmove",cancel); };
+                    document.addEventListener("touchend",cancel,{once:true});
+                    document.addEventListener("touchmove",cancel,{once:true});
+                  }}
                   style={{background:vis?c.bg:"rgba(255,255,255,0.03)",outline:scambioId===id?"3px dashed #fff":scambioId?"3px dashed rgba(255,255,255,0.3)":"none",outlineOffset:"2px",border:(()=>{const gId=prenView?.nota||(disdette||[]).find(d=>d.telefono&&d.telefono===prenView?.telefono)?.gruppoId;const g=(gruppi||[]).find(x=>x.id===gId);return g?`3px solid ${g.colore}`:act?"3px solid #fff":`2px solid ${vis?c.border:"rgba(255,255,255,0.07)"}`})(  ),borderRadius:11,padding:"7px 6px",opacity:vis?1:0.28,height:cellHeight,maxHeight:cellHeight,overflow:"hidden",boxShadow:(()=>{const gId=prenView?.nota||(disdette||[]).find(d=>d.telefono&&d.telefono===prenView?.telefono)?.gruppoId;const g=(gruppi||[]).find(x=>x.id===gId);return g?`0 0 14px ${g.colore}`:act?"0 0 0 3px rgba(255,255,255,0.35)":vis?`0 2px 10px ${c.border}2a`:"none"})(  ),position:"relative"}}>
                   {act&&<div style={{position:"absolute",top:2,right:2,background:"#fff",borderRadius:3,padding:"1px 3px",fontSize:7,color:"#0d3b6e",fontWeight:"bold"}}>📅</div>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <span style={{fontSize:12}}>⛱️</span>
                     <span style={{background:c.badge,color:"#fff",fontSize:7,padding:"1px 4px",borderRadius:20,fontWeight:"bold",textTransform:"uppercase"}}>{es}</span>
                   </div>
-                  <div style={{fontSize:13,fontWeight:"bold",color:"#1a1a1a",marginTop:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{String.fromCharCode(65+Math.floor((id-1)/cols))}{((id-1)%cols)+1}</span>{prenView?.lettino&&<span style={{fontSize:14}}>🛏️</span>}</div>
+                  <div style={{fontSize:13,fontWeight:"bold",color:"#1a1a1a",marginTop:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{String.fromCharCode(65+Math.floor((id-1)/cols))}{((id-1)%cols)+1}</span><span style={{display:"flex",gap:2}}>{prenView?.lettino&&<span style={{fontSize:14}}>🛏️</span>}{prenView?.noteAdmin&&<span style={{fontSize:14}} title={prenView.noteAdmin}>📝</span>}</span></div>
                   {displayName
                     ?<div>
                       <div style={{fontSize:nameFontSize,color:"#1a1a1a",fontWeight:"bold",marginTop:2,whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{displayName}</div><div style={{fontSize:9,color:"#555",fontStyle:"italic",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minHeight:1}}>{[prenView].map(pv=>pv&&pv["nota"]?"🏷️ "+pv["nota"]:"")[0]}</div>
@@ -1827,7 +1833,11 @@ export default function App() {
                 ))}
               </div>
               <input type="number" value={p.prezzo||""} onChange={e=>handleUpdatePren("prezzo",e.target.value)}
-                placeholder="€ Altro importo" style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#1a2e4a",marginBottom:12}}/>
+                placeholder="€ Altro importo" style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#1a2e4a",marginBottom:8}}/>
+              <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>📝 Note</div>
+              <textarea value={p.noteAdmin||""} onChange={e=>handleUpdatePren("noteAdmin",e.target.value)}
+                placeholder="Es. vuole ombra, famiglia con bimbo piccolo..." rows={2}
+                style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#1a2e4a",marginBottom:12,resize:"none"}}/>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button onClick={()=>{
                   if(!window.confirm("Cancellare la prenotazione senza registrare disdetta?")) return;
