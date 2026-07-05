@@ -51,14 +51,22 @@ export async function loadUmbrellas(db_instance) {
 }
 
 export function subscribeUmbrellas(db_instance, callback) {
-  loadUmbrellas(db_instance).then(data => callback(data));
-  const interval = setInterval(() => {
-    if (Date.now() - lastSaveTime < 10000) return;
-    loadUmbrellas(db_instance).then(data => {
-      if (data.umbrellas && data.umbrellas.length > 0) callback(data);
+  return onSnapshot(doc(db_instance, "lido", "dati"), (snap) => {
+    if (!snap.exists()) return;
+    if (Date.now() - lastSaveTime < 15000) return;
+    const data = snap.data();
+    callback({
+      umbrellas: data.umbrellas || [],
+      rows: data.rows || null,
+      cols: data.cols || null,
+      nameFontSize: data.nameFontSize || null,
+      cellWidth: data.cellWidth || 80,
+      disdette: data.disdette || [],
+      gruppi: data.gruppi || [],
+      disponibilita: data.disponibilita || {giorni_bloccati:[],ombrelloni_bloccati:[],stagione:{dal:"",al:""},postazioni_pet:[]},
+      cellHeight: data.cellHeight || null
     });
-  }, 60000);
-  return () => clearInterval(interval);
+  });
 }
 const appPub = initializeApp({
   apiKey: "AIzaSyBoqlln2_CAeDGiZsi0Zlqgk0UqmijmCIQ",
