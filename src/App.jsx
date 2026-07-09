@@ -795,6 +795,9 @@ export default function App() {
   const [disponibilita,setDisponibilita] = useState({giorni_bloccati:[],ombrelloni_bloccati:[],stagione:{dal:"",al:""},tariffe:{lettino_extra:5,weekend_perc:20,file:[]},postazioni_pet:[]});
   const [showDisponibilita,setShowDisponibilita] = useState(false);
   const [showAdmin,setShowAdmin] = useState(false);
+  const [showListaAttesa,setShowListaAttesa] = useState(false);
+  const [listaAttesa,setListaAttesa] = useState([]);
+  const [laSearch,setLaSearch] = useState("");
   const [showQR,setShowQR] = useState(false);
   const [prenotazioniOnline,setPrenotazioniOnline] = useState([]);
   const [notificheAttive,setNotificheAttive] = useState(typeof Notification!=="undefined"&&Notification.permission==="granted");
@@ -832,6 +835,7 @@ export default function App() {
         if (data.disdette) setDisdette(data.disdette);
         if (data.gruppi) setGruppi(data.gruppi);
         if (data.disponibilita) setDisponibilita(data.disponibilita);
+        if (data.listaAttesa) setListaAttesa(data.listaAttesa);
       } else if (data && Array.isArray(data) && data.length > 0) {
         isRemoteUpdate.current = true;
         setUmbrellas(data);
@@ -846,10 +850,10 @@ export default function App() {
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
     setSaving(true);
     const t = setTimeout(() => {
-      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita).finally(() => setSaving(false));
+      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa).finally(() => setSaving(false));
     }, 800);
     return () => clearTimeout(t);
-  }, [umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita]);
+  }, [umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa]);
 
   // Salva immediatamente cellWidth/cellHeight/nameFontSize quando cambiano
   useEffect(() => {
@@ -1143,6 +1147,7 @@ export default function App() {
         <button className="tbtn" onClick={()=>setShowMsgGiorno(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>📢</span> Msg Giorno</button>
         {isAdmin&&<button className="tbtn" onClick={attivaNotifiche} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11,background:notificheAttive?"rgba(40,167,69,0.3)":undefined,color:notificheAttive?"#fff":undefined}}><span style={{fontSize:13}}>{notificheAttive?"🔔":"🔕"}</span> {notificheAttive?"Notifiche ON":"Attiva notifiche"}</button>}
         {isAdmin&&<button className="tbtn" onClick={()=>{setShowAdmin(true);loadPrenotazioniClienti().then(setPrenotazioniOnline);}} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11,background:"rgba(13,110,253,0.3)",color:"#fff"}}><span style={{fontSize:13}}>📋</span> Richieste</button>}
+        <button className="tbtn" onClick={()=>setShowListaAttesa(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11,background:listaAttesa.some(x=>x.data===viewDate)?"rgba(255,140,0,0.3)":undefined,color:listaAttesa.some(x=>x.data===viewDate)?"#fff":undefined}}><span style={{fontSize:13}}>⏳</span> Attesa{listaAttesa.filter(x=>x.data===viewDate).length>0&&<span style={{background:"#ff8c00",color:"#fff",borderRadius:"50%",fontSize:9,padding:"1px 4px",marginLeft:4}}>{listaAttesa.filter(x=>x.data===viewDate).length}</span>}</button>
         <button className="tbtn" onClick={()=>setShowQR(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>📱</span> QR Code</button>
         {isAdmin&&<button className="tbtn" onClick={()=>setShowDisponibilita(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>📅</span> Disponibilità</button>}
         {isAdmin&&<button className="tbtn" onClick={()=>setShowGruppi(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>👥</span> Gruppi</button>}
@@ -1466,6 +1471,80 @@ export default function App() {
       )}
 
       {/* MODAL DISPONIBILITA */}
+      {showListaAttesa && (
+        <div style={{position:"fixed",inset:0,background:"rgba(10,20,40,0.7)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:5000}}>
+          <div style={{background:"#fff",borderRadius:24,padding:"28px 24px",width:420,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 40px 100px rgba(0,0,0,0.3)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:18,fontWeight:"bold",color:"#1a2e4a"}}>⏳ Lista d'attesa</div>
+              <button onClick={()=>{setShowListaAttesa(false);setLaSearch("");}} style={{background:"#f0f0f0",border:"none",borderRadius:20,width:32,height:32,cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+            <div style={{fontSize:12,color:"#888",marginBottom:16}}>Data visualizzata: <strong>{viewDate}</strong></div>
+            {listaAttesa.filter(x=>x.data===viewDate).length===0
+              ? <div style={{color:"#aaa",textAlign:"center",padding:20}}>Nessuno in lista per questa data</div>
+              : listaAttesa.filter(x=>x.data===viewDate).map((item)=>(
+                <div key={item.id} style={{background:"#fff8f0",borderRadius:12,padding:"12px 14px",marginBottom:8,border:"1px solid #ffe0b2"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontWeight:"bold",color:"#1a2e4a",fontSize:14}}>👤 {item.nome}</div>
+                      {item.telefono&&<div style={{fontSize:12,color:"#555",marginTop:2}}>📞 {item.telefono}</div>}
+                      {item.note&&<div style={{fontSize:11,color:"#888",marginTop:2,fontStyle:"italic"}}>📝 {item.note}</div>}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      {item.telefono&&<a href={"https://wa.me/39"+item.telefono.replace(/\s/g,"").replace(/^\+39/,"")} target="_blank" rel="noreferrer" style={{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer",textDecoration:"none"}}>💬</a>}
+                      <button onClick={()=>setListaAttesa(prev=>prev.filter(x=>x.id!==item.id))} style={{background:"#dc3545",color:"#fff",border:"none",borderRadius:8,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            }
+            <div style={{borderTop:"1px solid #eee",paddingTop:16,marginTop:8}}>
+              <div style={{fontSize:12,color:"#888",marginBottom:8,fontWeight:"bold"}}>➕ Aggiungi in lista</div>
+              {(()=>{
+                const q = laSearch.toLowerCase();
+                const allPrens = umbrellas.flatMap(u=>(u.prenotazioni||[]).map(p=>({...p,umbId:u.id})));
+                const allSources = [...allPrens,...(disdette||[])];
+                const found = q.length>=2 ? allSources.filter(p=>
+                  (p.telefono||"").replace(/\s/g,"").includes(q.replace(/\s/g,""))||
+                  (p.nome||"").toLowerCase().includes(q)||(p.cognome||"").toLowerCase().includes(q)
+                ) : [];
+                const seen = new Map();
+                found.forEach(p=>{const k=[p.nome,p.cognome].join("|").toLowerCase();if(!seen.has(k))seen.set(k,p);});
+                const suggerimenti = [...seen.values()].slice(0,5);
+                const [selNome,setSelNome] = [window.__la_sn||"",v=>{window.__la_sn=v;}];
+                const [selTel,setSelTel] = [window.__la_st||"",v=>{window.__la_st=v;}];
+                return (
+                  <div>
+                    <input value={laSearch} placeholder="🔍 Cerca cliente o scrivi nome..."
+                      onChange={e=>{setLaSearch(e.target.value);window.__la_sn="";window.__la_st="";}}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:4}}/>
+                    {suggerimenti.length>0&&<div style={{background:"#f8faff",borderRadius:10,border:"1px solid #e8eeff",marginBottom:8}}>
+                      {suggerimenti.map((p,i)=>{
+                        const nome=[p.nome,p.cognome].filter(Boolean).join(" ");
+                        return <div key={i} onClick={()=>{setLaSearch(nome);window.__la_sn=nome;window.__la_st=p.telefono||"";}} style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #eee",fontSize:13,color:"#1a2e4a"}}>
+                          👤 {nome} {p.telefono&&<span style={{color:"#888",fontSize:11}}>· {p.telefono}</span>}
+                        </div>;
+                      })}
+                    </div>}
+                    <input id="la_note2" placeholder="Note (opzionale)" style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:12}}/>
+                    <button onClick={()=>{
+                      const nome=(window.__la_sn||laSearch).trim().toUpperCase();
+                      const tel=window.__la_st||"";
+                      const note=document.getElementById("la_note2")?.value?.trim()||"";
+                      if(nome.length===0){alert("Inserisci il nome");return;}
+                      setListaAttesa(prev=>[...prev,{id:Date.now().toString(),nome,telefono:tel,note,data:viewDate}]);
+                      setLaSearch("");window.__la_sn="";window.__la_st="";
+                      if(document.getElementById("la_note2")) document.getElementById("la_note2").value="";
+                    }} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#ff8c00,#e67e00)",color:"#fff",fontSize:14,fontWeight:"bold",cursor:"pointer",fontFamily:"inherit"}}>
+                      ➕ Aggiungi
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDisponibilita && (()=>{
         const aggiornaDisp = (campo, valore) => setDisponibilita(prev=>({...prev,[campo]:valore}));
         return (

@@ -15,7 +15,7 @@ export const db = getFirestore(app);
 const DOC_REF = (db_instance) => doc(db_instance, "lido", "dati");
 let lastSaveTime = 0;
 
-export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita) {
+export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa) {
   try {
     const clean = (obj) => JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
     const data = { umbrellas: clean(umbrellas), updatedAt: Date.now() };
@@ -26,6 +26,7 @@ export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFont
     if (disdette && disdette.length) data.disdette = disdette;
     if (gruppi) data.gruppi = gruppi;
     if (disponibilita) data.disponibilita = disponibilita;
+    if (listaAttesa) data.listaAttesa = listaAttesa;
     await setDoc(DOC_REF(db_instance), data);
     lastSaveTime = Date.now();
     console.log("Salvato su Firebase!");
@@ -64,7 +65,8 @@ export function subscribeUmbrellas(db_instance, callback) {
       disdette: data.disdette || [],
       gruppi: data.gruppi || [],
       disponibilita: data.disponibilita || {giorni_bloccati:[],ombrelloni_bloccati:[],stagione:{dal:"",al:""},postazioni_pet:[]},
-      cellHeight: data.cellHeight || null
+      cellHeight: data.cellHeight || null,
+      listaAttesa: data.listaAttesa || []
     });
   });
 }
