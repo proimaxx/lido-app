@@ -54,8 +54,9 @@ export async function loadUmbrellas(db_instance) {
 export function subscribeUmbrellas(db_instance, callback) {
   return onSnapshot(doc(db_instance, "lido", "dati"), (snap) => {
     if (!snap.exists()) return;
-    if (Date.now() - lastSaveTime < 15000) return;
     const data = snap.data();
+    // Se abbiamo salvato localmente dopo l'ultimo updatedAt su Firebase, ignoriamo
+    if (data.updatedAt && data.updatedAt < lastSaveTime) return;
     callback({
       umbrellas: data.umbrellas || [],
       rows: data.rows || null,

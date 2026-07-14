@@ -109,9 +109,9 @@ function UmbrellaModal({ umbrella, allUmbrellas, viewDate, cols, disdette, grupp
 
   // Dati cliente dalla data visualizzata
   const todayPren = getPrenForDate(umbrella, activeDate);
-  const emptyClient = { nome:"", cognome:"", indirizzo:"", telefono:"", cf:"", nota:"", lettino:false };
+  const emptyClient = { nome:"", cognome:"", indirizzo:"", telefono:"", cf:"", nota:"", lettino:false, canale:null };
   const clientFromToday = todayPren
-    ? { nome:todayPren.nome||"", cognome:todayPren.cognome||"", indirizzo:todayPren.indirizzo||"", telefono:todayPren.telefono||"", cf:todayPren.cf||"", nota:todayPren.nota||"", lettino:todayPren.lettino||false }
+    ? { nome:todayPren.nome||"", cognome:todayPren.cognome||"", indirizzo:todayPren.indirizzo||"", telefono:todayPren.telefono||"", cf:todayPren.cf||"", nota:todayPren.nota||"", lettino:todayPren.lettino||false, canale:todayPren.canale||null }
     : emptyClient;
 
   const [client,setClient] = useState(clientFromToday);
@@ -185,10 +185,10 @@ function UmbrellaModal({ umbrella, allUmbrellas, viewDate, cols, disdette, grupp
     const originalPrenIds = new Set((umbrella.prenotazioni||[]).map(p=>p.id));
     const updatedPrenList = prenList.map(p => {
       if (editingPrenId && p.id === editingPrenId) {
-        return {...p, nome:client.nome, cognome:client.cognome, indirizzo:client.indirizzo, telefono:client.telefono, cf:client.cf, nota:client.nota||"", lettino:client.lettino||false };
+        return {...p, nome:client.nome, cognome:client.cognome, indirizzo:client.indirizzo, telefono:client.telefono, cf:client.cf, nota:client.nota||"", lettino:client.lettino||false, canale:client.canale||null };
       }
       if (!originalPrenIds.has(p.id)) {
-        return {...p, nome:client.nome, cognome:client.cognome, indirizzo:client.indirizzo, telefono:client.telefono, cf:client.cf, nota:client.nota||"", lettino:client.lettino||false };
+        return {...p, nome:client.nome, cognome:client.cognome, indirizzo:client.indirizzo, telefono:client.telefono, cf:client.cf, nota:client.nota||"", lettino:client.lettino||false, canale:client.canale||null };
       }
       return p;
     });
@@ -302,11 +302,18 @@ Per comunicazioni: risponda a questo messaggio.`;
                 </div>
               </div>
               <div><label style={LS}>Codice Fiscale</label><input value={client.cf||""} onChange={e=>setC("cf",e.target.value.toUpperCase())} placeholder="RSSMRA80A01H501Z" style={{...IS,letterSpacing:1}} maxLength={16}/></div>
-              <div style={{marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#f0f7ff",borderRadius:10,padding:"10px 14px",border:"1px solid #cce0ff"}}>
-                <span style={{fontSize:13,fontWeight:"bold",color:"#1a2e4a"}}>🛏️ Lettino aggiuntivo</span>
-                <button onClick={()=>setC("lettino",!client.lettino)} style={{width:48,height:26,borderRadius:13,border:"none",background:client.lettino?"#0d6efd":"#ccc",cursor:"pointer",position:"relative",transition:"all 0.2s"}}>
+              <div style={{marginBottom:8,display:"flex",alignItems:"center",gap:8,background:"#f0f7ff",borderRadius:10,padding:"10px 14px",border:"1px solid #cce0ff"}}>
+                <span style={{fontSize:13,fontWeight:"bold",color:"#1a2e4a",flex:1}}>🛏️ Lettino</span>
+                <button onClick={()=>setC("lettino",!client.lettino)} style={{width:48,height:26,borderRadius:13,border:"none",background:client.lettino?"#0d6efd":"#ccc",cursor:"pointer",position:"relative",transition:"all 0.2s",flexShrink:0}}>
                   <div style={{width:20,height:20,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:client.lettino?24:3,transition:"all 0.2s"}}/>
                 </button>
+                <div style={{width:1,height:24,background:"#cce0ff",margin:"0 4px"}}/>
+                {[["telefono","📞"],["whatsapp","💬"],["spiaggia","🏖️"]].map(([val,icon])=>(
+                  <button key={val} onClick={()=>setC("canale",client.canale===val?null:val)}
+                    style={{width:34,height:34,borderRadius:8,border:`2px solid ${client.canale===val?"#1a5c9a":"#cce0ff"}`,background:client.canale===val?"#1a5c9a":"#fff",color:client.canale===val?"#fff":"#888",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {icon}
+                  </button>
+                ))}
               </div>
               <div style={{marginBottom:8}}>
                 <label style={LS}>👥 Gruppo</label>
@@ -1270,7 +1277,7 @@ export default function App() {
                     <span style={{fontSize:12}}>⛱️</span>
                     <span style={{background:c.badge,color:"#fff",fontSize:7,padding:"1px 4px",borderRadius:20,fontWeight:"bold",textTransform:"uppercase"}}>{es}</span>
                   </div>
-                  <div style={{fontSize:13,fontWeight:"bold",color:"#1a1a1a",marginTop:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{String.fromCharCode(65+Math.floor((id-1)/cols))}{((id-1)%cols)+1}</span><span style={{display:"flex",gap:2}}>{prenView?.lettino&&<span style={{fontSize:14}}>🛏️</span>}{prenView?.noteAdmin&&<span style={{fontSize:14}} title={prenView.noteAdmin}>📝</span>}</span></div>
+                  <div style={{fontSize:13,fontWeight:"bold",color:"#1a1a1a",marginTop:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>{String.fromCharCode(65+Math.floor((id-1)/cols))}{((id-1)%cols)+1}</span><span style={{display:"flex",gap:2}}>{prenView?.lettino&&<span style={{fontSize:14}}>🛏️</span>}{prenView?.noteAdmin&&<span style={{fontSize:14}} title={prenView.noteAdmin}>📝</span>}{prenView?.canale==="telefono"&&<span style={{fontSize:12}}>📞</span>}{prenView?.canale==="whatsapp"&&<span style={{fontSize:12}}>💬</span>}{prenView?.canale==="spiaggia"&&<span style={{fontSize:12}}>🏖️</span>}</span></div>
                   {displayName
                     ?<div>
                       <div style={{fontSize:nameFontSize,color:"#1a1a1a",fontWeight:"bold",marginTop:2,whiteSpace:"normal",wordBreak:"break-word",lineHeight:1.2,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{displayName}</div><div style={{fontSize:9,color:"#555",fontStyle:"italic",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minHeight:1}}>{[prenView].map(pv=>pv&&pv["nota"]?"🏷️ "+pv["nota"]:"")[0]}</div>
@@ -1913,6 +1920,16 @@ export default function App() {
               </div>
               <input type="number" value={p.prezzo||""} onChange={e=>handleUpdatePren("prezzo",e.target.value)}
                 placeholder="€ Altro importo" style={{width:"100%",padding:"10px 14px",borderRadius:10,border:"2px solid #e8e8e8",fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box",color:"#1a2e4a",marginBottom:8}}/>
+              <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>📲 Canale prenotazione</div>
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                {[["telefono","📞","Telefonata"],["whatsapp","💬","WhatsApp"],["spiaggia","🏖️","In spiaggia"]].map(([val,icon,label])=>(
+                  <button key={val} onClick={()=>handleUpdatePren("canale",p.canale===val?null:val)}
+                    style={{flex:1,padding:"10px 4px",borderRadius:10,border:`2px solid ${p.canale===val?"#1a5c9a":"#eee"}`,background:p.canale===val?"#e8f0ff":"#fafafa",color:p.canale===val?"#1a5c9a":"#999",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:p.canale===val?"bold":"normal",textAlign:"center"}}>
+                    <div style={{fontSize:20}}>{icon}</div>
+                    <div style={{marginTop:2}}>{label}</div>
+                  </button>
+                ))}
+              </div>
               <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>📝 Note</div>
               <textarea value={p.noteAdmin||""} onChange={e=>handleUpdatePren("noteAdmin",e.target.value)}
                 placeholder="Es. vuole ombra, famiglia con bimbo piccolo..." rows={2}
