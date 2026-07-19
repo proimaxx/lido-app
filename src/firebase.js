@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, onSnapshot } from "firebase/firestore";
+import { initializeFirestore, getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, onSnapshot } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDBjX7gNfUzVgjYqjJb7bjVtSyAoAESdGU",
@@ -11,7 +11,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+  useFetchStreams: false,
+});
 const DOC_REF = (db_instance) => doc(db_instance, "lido", "dati");
 let lastSaveTime = 0;
 
@@ -54,9 +57,8 @@ export async function loadUmbrellas(db_instance) {
 export function subscribeUmbrellas(db_instance, callback) {
   return onSnapshot(doc(db_instance, "lido", "dati"), (snap) => {
     if (!snap.exists()) return;
+    if (snap.metadata.hasPendingWrites) return;
     const data = snap.data();
-    // Se abbiamo salvato localmente dopo l'ultimo updatedAt su Firebase, ignoriamo
-    if (data.updatedAt && data.updatedAt < lastSaveTime) return;
     callback({
       umbrellas: data.umbrellas || [],
       rows: data.rows || null,
