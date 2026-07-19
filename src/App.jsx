@@ -829,27 +829,55 @@ export default function App() {
       .catch(()=>{});
   }, []);
 
+  // Applica i dati ricevuti (da onSnapshot O da un refresh manuale) allo state locale
+  const applyUmbrellaData = (data) => {
+    if (data && data.umbrellas && data.umbrellas.length > 0) {
+      isRemoteUpdate.current = true;
+      setUmbrellas(data.umbrellas);
+      if (data.rows) setRows(data.rows);
+      if (data.cols) setCols(data.cols);
+      if (data.nameFontSize) { setNameFontSize(data.nameFontSize); localStorage.setItem("nameFontSize", data.nameFontSize); }
+      if (data.cellHeight) { setCellHeight(data.cellHeight); localStorage.setItem("cellHeight", data.cellHeight); }
+      if (data.cellWidth) { setCellWidth(data.cellWidth); localStorage.setItem("cellWidth", data.cellWidth); }
+      if (data.disdette) setDisdette(data.disdette);
+      if (data.gruppi) setGruppi(data.gruppi);
+      if (data.disponibilita) setDisponibilita(data.disponibilita);
+      if (data.listaAttesa) setListaAttesa(data.listaAttesa);
+    } else if (data && Array.isArray(data) && data.length > 0) {
+      isRemoteUpdate.current = true;
+      setUmbrellas(data);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const unsub = subscribeUmbrellas(db, (data) => {
-      if (data && data.umbrellas && data.umbrellas.length > 0) {
-        isRemoteUpdate.current = true;
-        setUmbrellas(data.umbrellas);
-        if (data.rows) setRows(data.rows);
-        if (data.cols) setCols(data.cols);
-        if (data.nameFontSize) { setNameFontSize(data.nameFontSize); localStorage.setItem("nameFontSize", data.nameFontSize); }
-        if (data.cellHeight) { setCellHeight(data.cellHeight); localStorage.setItem("cellHeight", data.cellHeight); }
-        if (data.cellWidth) { setCellWidth(data.cellWidth); localStorage.setItem("cellWidth", data.cellWidth); }
-        if (data.disdette) setDisdette(data.disdette);
-        if (data.gruppi) setGruppi(data.gruppi);
-        if (data.disponibilita) setDisponibilita(data.disponibilita);
-        if (data.listaAttesa) setListaAttesa(data.listaAttesa);
-      } else if (data && Array.isArray(data) && data.length > 0) {
-        isRemoteUpdate.current = true;
-        setUmbrellas(data);
-      }
-      setLoading(false);
-    });
+    const unsub = subscribeUmbrellas(db, applyUmbrellaData);
     return () => unsub();
+  }, []);
+
+  // FIX iOS Safari: quando Safari sospende il listener onSnapshot in background
+  // (schermo bloccato, cambio app, PWA in sospensione), al ritorno in foreground
+  // il listener a volte non si "risveglia" da solo. Qui forziamo un refresh manuale.
+  useEffect(() => {
+    let refreshing = false;
+    const forceRefresh = () => {
+      if (document.visibilityState !== "visible" || refreshing) return;
+      refreshing = true;
+      loadUmbrellas(db)
+        .then((data) => { if (data) applyUmbrellaData(data); })
+        .catch((err) => console.warn("Refresh manuale fallito:", err))
+        .finally(() => { refreshing = false; });
+    };
+
+    document.addEventListener("visibilitychange", forceRefresh);
+    window.addEventListener("pageshow", forceRefresh);
+    window.addEventListener("focus", forceRefresh);
+
+    return () => {
+      document.removeEventListener("visibilitychange", forceRefresh);
+      window.removeEventListener("pageshow", forceRefresh);
+      window.removeEventListener("focus", forceRefresh);
+    };
   }, []);
 
   useEffect(() => {
