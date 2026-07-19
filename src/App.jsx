@@ -873,10 +873,26 @@ export default function App() {
     window.addEventListener("pageshow", forceRefresh);
     window.addEventListener("focus", forceRefresh);
 
+    // Rete di sicurezza via Web Worker: i timer nei Worker NON vengono rallentati
+    // da Safari quando la pagina e' inattiva/senza interazioni recenti, a differenza
+    // di setInterval sul thread principale. Garantisce un ritardo massimo reale di ~2s.
+    let heartbeatWorker = null;
+    let fallbackHeartbeat = null;
+    try {
+      heartbeatWorker = new Worker(process.env.PUBLIC_URL + "/heartbeatWorker.js");
+      heartbeatWorker.onmessage = () => forceRefresh();
+      heartbeatWorker.postMessage("start");
+    } catch (e) {
+      console.warn("Heartbeat worker non disponibile, fallback a setInterval", e);
+      fallbackHeartbeat = setInterval(forceRefresh, 2000);
+    }
+
     return () => {
       document.removeEventListener("visibilitychange", forceRefresh);
       window.removeEventListener("pageshow", forceRefresh);
       window.removeEventListener("focus", forceRefresh);
+      if (heartbeatWorker) { heartbeatWorker.postMessage("stop"); heartbeatWorker.terminate(); }
+      if (fallbackHeartbeat) clearInterval(fallbackHeartbeat);
     };
   }, []);
 

@@ -11,10 +11,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,
+const isSafariOrIOS = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+export const db = initializeFirestore(app, isSafariOrIOS ? {
+  experimentalForceLongPolling: true,
   useFetchStreams: false,
-});
+} : {});
 const DOC_REF = (db_instance) => doc(db_instance, "lido", "dati");
 let lastSaveTime = 0;
 
