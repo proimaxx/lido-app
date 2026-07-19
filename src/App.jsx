@@ -103,7 +103,7 @@ function MiniCalendar({ occupiedRanges, selectedRanges, singleDates, onToggleDat
 }
 
 // ── SCHEDA CLIENTE / UMBRELLA MODAL ──────────────────────────────
-function UmbrellaModal({ umbrella, allUmbrellas, viewDate, cols, disdette, gruppi, onSave, onUpdateGruppoCliente, onClose }) {
+function UmbrellaModal({ umbrella, allUmbrellas, viewDate, cols, disdette, gruppi, onSave, onUpdateGruppoCliente, onClose, onEditingChange }) {
   const td = todayStr();
   const activeDate = viewDate || td;
 
@@ -125,6 +125,14 @@ function UmbrellaModal({ umbrella, allUmbrellas, viewDate, cols, disdette, grupp
     ? [...initPrenList, {id:makeId(),dal:activeDate,al:activeDate,status:"prenotato",prezzo:"",_single:true}]
     : initPrenList;
   const [prenList,setPrenList] = useState(initList);
+
+  // Segnala al componente padre che questa prenotazione e' "in modifica" per tutta
+  // la durata in cui il modal e' aperto, cosi' heartbeat/listener realtime non
+  // sovrascrivono lo stato mentre l'utente sta ancora scegliendo (prima di Salva).
+  useEffect(() => {
+    if (onEditingChange) onEditingChange(true);
+    return () => { if (onEditingChange) onEditingChange(false); };
+  }, []);
 
   const [selMode,setSelMode] = useState("singoli");
   const [editingPrenId,setEditingPrenId] = useState(null);
@@ -814,6 +822,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const isRemoteUpdate = useRef(false);
+  const isDirty = useRef(false); // true = modifiche locali non ancora confermate su Firestore
 
   // Carica meteo
   useEffect(()=>{
@@ -831,6 +840,10 @@ export default function App() {
 
   // Applica i dati ricevuti (da onSnapshot O da un refresh manuale) allo state locale
   const applyUmbrellaData = (data) => {
+    // Se abbiamo una modifica locale non ancora confermata su Firestore, ignoriamo
+    // questo aggiornamento (da onSnapshot o da refresh manuale) per non perderla:
+    // verra' applicata automaticamente al prossimo snapshot, dopo il nostro salvataggio.
+    if (isDirty.current) return;
     if (data && data.umbrellas && data.umbrellas.length > 0) {
       isRemoteUpdate.current = true;
       setUmbrellas(data.umbrellas);
@@ -861,7 +874,7 @@ export default function App() {
   useEffect(() => {
     let refreshing = false;
     const forceRefresh = () => {
-      if (document.visibilityState !== "visible" || refreshing) return;
+      if (document.visibilityState !== "visible" || refreshing || isDirty.current) return;
       refreshing = true;
       loadUmbrellas(db)
         .then((data) => { if (data) applyUmbrellaData(data); })
@@ -899,9 +912,10 @@ export default function App() {
   useEffect(() => {
     if (loading) return;
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
+    isDirty.current = true;
     setSaving(true);
     const t = setTimeout(() => {
-      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa).finally(() => setSaving(false));
+      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa).finally(() => { setSaving(false); isDirty.current = false; });
     }, 800);
     return () => clearTimeout(t);
   }, [umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa]);
@@ -2049,6 +2063,7 @@ Siamo spiacenti per l'inconveniente. La aspettiamo presto! ☀️
           onSave={handleSave}
           onUpdateGruppoCliente={(tel,gid)=>setDisdette(prev=>{const idx=prev.findIndex(d=>d.telefono===tel);if(idx>=0){const n=[...prev];n[idx]={...n[idx],gruppoId:gid};return n;}return [...prev,{telefono:tel,gruppoId:gid,count:0}];})}
           onClose={()=>setSelected(null)}
+          onEditingChange={(v)=>{isDirty.current=v;}}
         />
       )}
       {/* MODAL MESSAGGIO DEL GIORNO */}
