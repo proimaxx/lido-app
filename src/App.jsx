@@ -238,7 +238,7 @@ Per comunicazioni: risponda a questo messaggio.`;
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(10,20,40,0.6)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-      <div style={{background:"#fff",borderRadius:22,padding:"24px 28px",width:700,maxWidth:"97vw",maxHeight:"95vh",overflowY:"auto",boxShadow:"0 30px 80px rgba(0,0,0,0.28)",fontFamily:"'Georgia',serif",animation:"fadeUp 0.2s ease"}}>
+      <div style={{background:"#fff",borderRadius:22,padding:"20px 28px",width:800,maxWidth:"97vw",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 30px 80px rgba(0,0,0,0.28)",fontFamily:"'Georgia',serif",animation:"fadeUp 0.2s ease"}}>
 
         {/* HEADER */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
@@ -459,7 +459,7 @@ Per comunicazioni: risponda a questo messaggio.`;
                   <button onClick={()=>setEditingPopup(null)} style={{background:"#f0f0f0",border:"none",borderRadius:20,width:32,height:32,cursor:"pointer",fontSize:16,color:"#555"}}>×</button>
                 </div>
                 <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Stato</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
                   {Object.entries(STATUS_COLORS).filter(([k])=>k!=="libero").map(([k,v])=>(
                     <button key={k} onClick={()=>{
                       updatePren(p.id,"status",k);
@@ -1952,7 +1952,7 @@ export default function App() {
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:4000}} onClick={()=>setQuickPopup(null)}>
-            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px 20px 28px",width:360,maxWidth:"95vw",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"20px 20px 24px",width:420,maxWidth:"95vw",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div>
                   <div style={{fontSize:18,fontWeight:"bold",color:"#1a2e4a"}}>{lettera}{posto}</div>
@@ -1962,7 +1962,7 @@ export default function App() {
                 <button onClick={()=>setQuickPopup(null)} style={{background:"#f0f0f0",border:"none",borderRadius:20,width:32,height:32,cursor:"pointer",fontSize:16}}>x</button>
               </div>
               <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Stato</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
                 {Object.entries(STATUS_COLORS).filter(([k])=>k!=="libero").map(([k,v])=>(
                   <button key={k} onClick={()=>handleUpdatePren("status",k)}
                     style={{padding:"14px 8px",borderRadius:12,border:`2px solid ${p.status===k?v.border:"#eee"}`,background:p.status===k?v.bg:"#fafafa",color:p.status===k?v.badge:"#999",fontSize:14,cursor:"pointer",fontWeight:p.status===k?"bold":"normal",textAlign:"center"}}>
