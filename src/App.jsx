@@ -91,14 +91,12 @@ function parseVoiceCommand(rawText) {
   if (tokens.includes("prenota")) {
     const code = findOmbrelloneCode(tokens);
     if(!code) return null;
-    const perIdx = tokens.indexOf("per");
+    const afterCodeIdx = Math.max.apply(null, code.consumedIdx) + 1;
+    const stopWords = new Set(["per","ombrellone","prenota"]);
+    const nameTokens = tokens.slice(afterCodeIdx).filter(t=>!stopWords.has(t));
     let nome = "", cognome = "";
-    if(perIdx>=0){
-      const excl = new Set(code.consumedIdx);
-      const nameTokens = tokens.slice(perIdx+1).filter((t,i)=>!excl.has(perIdx+1+i));
-      if(nameTokens[0]) nome = capitalizeWord(nameTokens[0]);
-      if(nameTokens.length>1) cognome = nameTokens.slice(1).map(capitalizeWord).join(" ");
-    }
+    if(nameTokens[0]) nome = capitalizeWord(nameTokens[0]);
+    if(nameTokens.length>1) cognome = nameTokens.slice(1).map(capitalizeWord).join(" ");
     return {type:"prenota", lettera:code.lettera, posto:code.posto, nome, cognome};
   }
 
