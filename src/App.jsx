@@ -108,6 +108,15 @@ function parseVoiceCommand(rawText) {
     return {type: isPos?"pagato_pos":"pagato", lettera:code.lettera, posto:code.posto, importo};
   }
 
+  if (tokens.includes("cerca")) {
+    const code = findOmbrelloneCode(tokens);
+    if(code) return {type:"cerca_posizione", lettera:code.lettera, posto:code.posto};
+    const idx = tokens.indexOf("cerca");
+    const query = tokens.slice(idx+1).join(" ");
+    if(!query) return null;
+    return {type:"cerca_nome", query};
+  }
+
   if (tokens.includes("libera")) {
     const code = findOmbrelloneCode(tokens);
     if(!code) return null;
@@ -1137,6 +1146,15 @@ export default function App() {
       const text = e.results[0][0].transcript;
       const parsed = parseVoiceCommand(text);
       if(!parsed){ setVoiceError("Comando non riconosciuto: \""+text+"\""); return; }
+      if(parsed.type==="cerca_posizione"){
+        const cid = (parsed.lettera.charCodeAt(0)-65)*cols + parsed.posto;
+        setSearch(String(cid));
+        return;
+      }
+      if(parsed.type==="cerca_nome"){
+        setSearch(parsed.query);
+        return;
+      }
       if(parsed.type==="prenota" && parsed.nome){
         const matches = findClientMatchesGlobal(parsed.nome, parsed.cognome, umbrellas, disdette);
         setVoiceCommand({...parsed, raw:text, matches});
