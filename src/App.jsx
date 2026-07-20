@@ -30,6 +30,98 @@ const fullName = (u) => {
 };
 const dateInRange = (ds,dal,al) => dal && al && ds>=dal && ds<=al;
 
+const ITA_NUM = {zero:0,uno:1,due:2,tre:3,quattro:4,cinque:5,sei:6,sette:7,otto:8,nove:9,dieci:10,undici:11,dodici:12,tredici:13,quattordici:14,quindici:15,sedici:16,diciassette:17,diciotto:18,diciannove:19,venti:20,ventuno:21,ventidue:22,ventitre:23,ventitre:23,ventiquattro:24,venticinque:25,ventisei:26,ventisette:27,ventotto:28,ventinove:29,trenta:30,trentuno:31};
+const wordToNumber = (w) => { if(/^\d+$/.test(w)) return parseInt(w,10); return ITA_NUM[(w||"").toLowerCase()] ?? null; };
+const capitalizeWord = (w) => w ? w.charAt(0).toUpperCase()+w.slice(1).toLowerCase() : "";
+
+function findOmbrelloneCode(tokens) {
+  for (let i=0;i<tokens.length;i++){
+    const t = tokens[i];
+    const combo = t.match(/^([a-y])(\d{1,2})$/i);
+    if(combo) return {lettera:combo[1].toUpperCase(), posto:parseInt(combo[2],10), consumedIdx:[i]};
+    if(/^[a-y]$/i.test(t) && i+1<tokens.length){
+      const num = wordToNumber(tokens[i+1]);
+      if(num!=null && num>=1 && num<=99) return {lettera:t.toUpperCase(), posto:num, consumedIdx:[i,i+1]};
+    }
+  }
+  return null;
+}
+
+function findAmount(tokens, excludeIdx) {
+  const exclude = new Set(excludeIdx||[]);
+  for (let i=0;i<tokens.length;i++){
+    if(exclude.has(i)) continue;
+    const t = (tokens[i]||"").replace(/[\u20AC]/g,"");
+    if(!t) continue;
+    const num = wordToNumber(t);
+    if(num==null) continue;
+    const nearEuro = tokens[i-1]==="euro"||tokens[i+1]==="euro"||/\u20AC/.test(tokens[i]);
+    if(nearEuro) return num;
+  }
+  for (let i=0;i<tokens.length;i++){
+    if(exclude.has(i)) continue;
+    const num = wordToNumber(tokens[i]);
+    if(num!=null) return num;
+  }
+  return null;
+}
+
+function parseVoiceCommand(rawText) {
+  const text = (rawText||"").toLowerCase().trim().replace(/[.,!?]/g,"");
+  const tokens = text.split(/\s+/).filter(Boolean);
+  if(tokens.length===0) return null;
+
+  if (tokens.includes("vai") && tokens.includes("giorno")) {
+    const idx = tokens.indexOf("giorno");
+    for (let i=idx+1;i<tokens.length;i++){
+      const num = wordToNumber(tokens[i]);
+      if(num!=null) return {type:"goto", day:num};
+    }
+    return null;
+  }
+
+  if (tokens.includes("prenota")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    const perIdx = tokens.indexOf("per");
+    let nome = "", cognome = "";
+    if(perIdx>=0){
+      const excl = new Set(code.consumedIdx);
+      const nameTokens = tokens.slice(perIdx+1).filter((t,i)=>!excl.has(perIdx+1+i));
+      if(nameTokens[0]) nome = capitalizeWord(nameTokens[0]);
+      if(nameTokens.length>1) cognome = nameTokens.slice(1).map(capitalizeWord).join(" ");
+    }
+    return {type:"prenota", lettera:code.lettera, posto:code.posto, nome, cognome};
+  }
+
+  if (tokens.includes("pagato")) {
+    const isPos = tokens.includes("pos");
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    const importo = findAmount(tokens, code.consumedIdx);
+    return {type: isPos?"pagato_pos":"pagato", lettera:code.lettera, posto:code.posto, importo};
+  }
+
+  if (tokens.includes("libera")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    return {type:"libera", lettera:code.lettera, posto:code.posto};
+  }
+
+  return null;
+}
+
+function describeVoiceCommand(cmd) {
+  if(!cmd) return "";
+  const pos = cmd.lettera && cmd.posto ? (cmd.lettera+""+cmd.posto) : "";
+  if(cmd.type==="goto") return "Vai al giorno "+cmd.day;
+  if(cmd.type==="prenota") return "Prenota ombrellone "+pos+(cmd.nome?(" per "+cmd.nome+(cmd.cognome?" "+cmd.cognome:"")):"");
+  if(cmd.type==="pagato") return "Pagato ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
+  if(cmd.type==="pagato_pos") return "Pagato POS ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
+  if(cmd.type==="libera") return "Libera ombrellone "+pos;
+  return "";
+}
+
 function makeUmbrellas(rows,cols){
   return Array.from({length:rows*cols},(_,i)=>({id:i+1,nome:"",cognome:"",indirizzo:"",telefono:"",prenotazioni:[]}));
 }
@@ -805,6 +897,10 @@ export default function App() {
   const [msgInviati,setMsgInviati] = useState(()=>{ try { const s=JSON.parse(localStorage.getItem("msgInviati")||"null"); return s&&s.date===new Date().toISOString().slice(0,10)?s.tels:[]; } catch(e){return [];} });
 
   const [quickPopup,setQuickPopup]   = useState(null);
+  const [voiceListening,setVoiceListening] = useState(false);
+  const [voiceCommand,setVoiceCommand] = useState(null);
+  const [voiceError,setVoiceError] = useState(null);
+  const voiceRecognitionRef = useRef(null);
   const [disdette,setDisdette]       = useState([]);
   const [gruppi,setGruppi]             = useState([]); // [{id,nome,colore}]
   const [disponibilita,setDisponibilita] = useState({giorni_bloccati:[],ombrelloni_bloccati:[],stagione:{dal:"",al:""},tariffe:{lettino_extra:5,weekend_perc:20,file:[]},postazioni_pet:[]});
@@ -968,6 +1064,65 @@ export default function App() {
     setSelected(null); // chiudi modal dopo salvataggio
   };
   const handleCalSave=(updated)=>{setUmbrellas(arr=>arr.map(x=>x.id===updated.id?updated:x));};
+
+  const startVoiceCommand = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR){ setVoiceError("Riconoscimento vocale non supportato su questo browser."); return; }
+    setVoiceError(null);
+    const recognition = new SR();
+    recognition.lang = "it-IT";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setVoiceListening(true);
+    recognition.onend = () => setVoiceListening(false);
+    recognition.onerror = (e) => { setVoiceListening(false); if(e.error!=="aborted") setVoiceError("Errore microfono: "+e.error); };
+    recognition.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      const parsed = parseVoiceCommand(text);
+      if(!parsed){ setVoiceError("Comando non riconosciuto: \""+text+"\""); return; }
+      setVoiceCommand({...parsed, raw:text});
+    };
+    voiceRecognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const executeVoiceCommand = () => {
+    const cmd = voiceCommand;
+    if(!cmd) return;
+    if(cmd.type==="goto"){
+      const base = new Date(viewDate+"T00:00:00");
+      const newDate = toDateStr(base.getFullYear(), base.getMonth(), cmd.day);
+      setSelectedDate(newDate);
+      setVoiceCommand(null);
+      return;
+    }
+    const id = (cmd.lettera.charCodeAt(0)-65)*cols + cmd.posto;
+    const umb = umbrellas.find(u=>u.id===id);
+    if(!umb){ setVoiceError("Ombrellone "+cmd.lettera+cmd.posto+" non trovato."); setVoiceCommand(null); return; }
+    if(cmd.type==="prenota"){
+      const newPren = {id:makeId(), dal:viewDate, al:viewDate, status:"prenotato", prezzo:"", _single:true, nome:cmd.nome||"", cognome:cmd.cognome||""};
+      setUmbrellas(arr=>arr.map(u=>u.id!==id?u:{...u, prenotazioni:[...(u.prenotazioni||[]), newPren]}));
+    } else if(cmd.type==="pagato"||cmd.type==="pagato_pos"){
+      setUmbrellas(arr=>arr.map(u=>{
+        if(u.id!==id) return u;
+        const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+        if(existing){
+          return {...u, prenotazioni:u.prenotazioni.map(p=>p.id!==existing.id?p:{...p,status:cmd.type,prezzo:cmd.importo!=null?String(cmd.importo):p.prezzo})};
+        }
+        const newPren = {id:makeId(), dal:viewDate, al:viewDate, status:cmd.type, prezzo:cmd.importo!=null?String(cmd.importo):"", _single:true};
+        return {...u, prenotazioni:[...(u.prenotazioni||[]), newPren]};
+      }));
+    } else if(cmd.type==="libera"){
+      setUmbrellas(arr=>arr.map(u=>{
+        if(u.id!==id) return u;
+        const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+        if(!existing) return u;
+        return {...u, prenotazioni:u.prenotazioni.map(p=>p.id!==existing.id?p:{...p,status:"liberata"})};
+      }));
+    }
+    setVoiceCommand(null);
+  };
 
   const allRevenue=(status)=>umbrellas.reduce((s,u)=>s+(u.prenotazioni||[]).filter(p=>p.status===status&&(p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al))).reduce((a,p)=>a+parseFloat(p.prezzo||0),0),0);
   const revenueContanti=allRevenue("pagato"), revenuePOS=allRevenue("pagato_pos"), totalRevenue=revenueContanti+revenuePOS;
@@ -2066,6 +2221,34 @@ Siamo spiacenti per l'inconveniente. La aspettiamo presto! ☀️
           onEditingChange={(v)=>{isDirty.current=v;}}
         />
       )}
+      {/* PULSANTE COMANDI VOCALI */}
+      <button
+        onClick={startVoiceCommand}
+        disabled={voiceListening}
+        style={{position:"fixed",bottom:24,right:24,width:64,height:64,borderRadius:"50%",border:"none",background:voiceListening?"linear-gradient(135deg,#dc3545,#a71d2a)":"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",fontSize:26,cursor:"pointer",boxShadow:"0 6px 20px rgba(0,0,0,0.3)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {voiceListening ? "\uD83D\uDD34" : "\uD83C\uDFA4"}
+      </button>
+
+      {voiceCommand && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:6000}} onClick={()=>setVoiceCommand(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px 22px",width:340,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:10}}>\uD83C\uDFA4</div>
+            <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Ho capito</div>
+            <div style={{fontSize:16,fontWeight:"bold",color:"#1a2e4a",marginBottom:20}}>{describeVoiceCommand(voiceCommand)}</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setVoiceCommand(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"2px solid #e0e0e0",background:"#fff",color:"#555",cursor:"pointer",fontFamily:"inherit",fontSize:14}}>Annulla</button>
+              <button onClick={executeVoiceCommand} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:"bold"}}>\u2713 Conferma</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {voiceError && (
+        <div style={{position:"fixed",bottom:100,right:24,maxWidth:280,background:"#dc3545",color:"#fff",padding:"12px 16px",borderRadius:12,fontSize:13,boxShadow:"0 6px 20px rgba(0,0,0,0.3)",zIndex:6000,cursor:"pointer"}} onClick={()=>setVoiceError(null)}>
+          \u26A0\uFE0F {voiceError}
+        </div>
+      )}
+
       {/* MODAL MESSAGGIO DEL GIORNO */}
       {showMsgGiorno && (()=>{
         const dateLabel = new Date(viewDate+"T00:00:00").toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
