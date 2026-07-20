@@ -966,6 +966,7 @@ export default function App() {
   const [voiceCommand,setVoiceCommand] = useState(null);
   const [voiceError,setVoiceError] = useState(null);
   const voiceRecognitionRef = useRef(null);
+  const [showVoiceHelp,setShowVoiceHelp] = useState(false);
   const [disdette,setDisdette]       = useState([]);
   const [gruppi,setGruppi]             = useState([]); // [{id,nome,colore}]
   const [disponibilita,setDisponibilita] = useState({giorni_bloccati:[],ombrelloni_bloccati:[],stagione:{dal:"",al:""},tariffe:{lettino_extra:5,weekend_perc:20,file:[]},postazioni_pet:[]});
@@ -2375,6 +2376,40 @@ Siamo spiacenti per l'inconveniente. La aspettiamo presto! ☀️
         style={{position:"fixed",bottom:24,right:24,width:64,height:64,borderRadius:"50%",border:"none",background:voiceListening?"linear-gradient(135deg,#dc3545,#a71d2a)":"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",fontSize:26,cursor:"pointer",boxShadow:"0 6px 20px rgba(0,0,0,0.3)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {voiceListening ? "\uD83D\uDD34" : "\uD83C\uDFA4"}
       </button>}
+      {isAdmin && voiceEnabled && <button
+        onClick={()=>setShowVoiceHelp(true)}
+        style={{position:"fixed",bottom:92,right:32,width:32,height:32,borderRadius:"50%",border:"none",background:"rgba(26,92,154,0.9)",color:"#fff",fontSize:15,fontWeight:"bold",cursor:"pointer",boxShadow:"0 4px 12px rgba(0,0,0,0.25)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        ?
+      </button>}
+
+      {showVoiceHelp && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:6500}} onClick={()=>setShowVoiceHelp(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"22px 20px",width:400,maxWidth:"90vw",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontSize:16,fontWeight:"bold",color:"#1a2e4a"}}>\uD83C\uDFA4 Comandi vocali</div>
+              <button onClick={()=>setShowVoiceHelp(false)} style={{background:"#f0f0f0",border:"none",borderRadius:20,width:30,height:30,cursor:"pointer",fontSize:15}}>x</button>
+            </div>
+            {[
+              ["Navigazione", [["Vai al giorno [numero]", "Vai al giorno 15"], ["Vai al giorno [numero] [mese]", "Vai al giorno 15 agosto"]]],
+              ["Ricerca", [["Cerca ombrellone [pos]", "Cerca ombrellone A6"], ["Cerca [nome]", "Cerca Mario"]]],
+              ["Prenotazioni", [["Prenota ombrellone [pos] [nome]", "Prenota ombrellone A6 Mario Rossi"]]],
+              ["Stato e pagamenti", [["Pagato ombrellone [pos] [importo] euro", "Pagato ombrellone A7 venti euro"], ["Pagato POS ombrellone [pos] [importo] euro", "Pagato POS ombrellone A7 venti euro"], ["Occupato ombrellone [pos]", "Occupato ombrellone A6"], ["Libera ombrellone [pos]", "Libera ombrellone A6"]]],
+              ["Cancellazioni", [["Cancella / Elimina ombrellone [pos]", "Cancella ombrellone A6"], ["Disdici / Disdetta ombrellone [pos]", "Disdici ombrellone A6"]]],
+              ["Canale", [["Canale telefono/whatsapp/spiaggia ombrellone [pos]", "Canale whatsapp ombrellone A6"]]],
+            ].map(([sezione,cmds],si)=>(
+              <div key={si} style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:6,fontWeight:"bold"}}>{sezione}</div>
+                {cmds.map(([label,esempio],ci)=>(
+                  <div key={ci} style={{marginBottom:8,paddingBottom:8,borderBottom:"1px solid #f0f0f0"}}>
+                    <div style={{fontSize:13,fontWeight:"bold",color:"#1a2e4a"}}>{label}</div>
+                    <div style={{fontSize:12,color:"#888",fontStyle:"italic"}}>"{esempio}"</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {voiceCommand && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:6000}} onClick={()=>setVoiceCommand(null)}>
