@@ -108,6 +108,35 @@ function parseVoiceCommand(rawText) {
     return {type:"libera", lettera:code.lettera, posto:code.posto};
   }
 
+  if (tokens.includes("occupato")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    return {type:"occupato", lettera:code.lettera, posto:code.posto};
+  }
+
+  if (tokens.includes("cancella") || tokens.includes("elimina")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    return {type:"cancella", lettera:code.lettera, posto:code.posto};
+  }
+
+  if (tokens.includes("disdici") || tokens.includes("disdetta") || tokens.includes("disdice")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    return {type:"disdici", lettera:code.lettera, posto:code.posto};
+  }
+
+  if (tokens.includes("canale")) {
+    const code = findOmbrelloneCode(tokens);
+    if(!code) return null;
+    let canale = null;
+    if(tokens.includes("telefono")||tokens.includes("telefonata")) canale="telefono";
+    else if(tokens.includes("whatsapp")) canale="whatsapp";
+    else if(tokens.includes("spiaggia")) canale="spiaggia";
+    if(!canale) return null;
+    return {type:"canale", lettera:code.lettera, posto:code.posto, canale};
+  }
+
   return null;
 }
 
@@ -115,11 +144,32 @@ function describeVoiceCommand(cmd) {
   if(!cmd) return "";
   const pos = cmd.lettera && cmd.posto ? (cmd.lettera+""+cmd.posto) : "";
   if(cmd.type==="goto") return "Vai al giorno "+cmd.day;
-  if(cmd.type==="prenota") return "Prenota ombrellone "+pos+(cmd.nome?(" per "+cmd.nome+(cmd.cognome?" "+cmd.cognome:"")):"");
+  if(cmd.type==="prenota") return "Prenota ombrellone "+pos+(cmd.nome?(" per "+cmd.nome+(cmd.cognome?" "+cmd.cognome:"")):"")+(cmd.selectedClient&&cmd.selectedClient.telefono?(" \uD83D\uDCDE "+cmd.selectedClient.telefono):"");
   if(cmd.type==="pagato") return "Pagato ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
   if(cmd.type==="pagato_pos") return "Pagato POS ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
   if(cmd.type==="libera") return "Libera ombrellone "+pos;
+  if(cmd.type==="occupato") return "Occupato ombrellone "+pos;
+  if(cmd.type==="cancella") return "Cancella prenotazione ombrellone "+pos;
+  if(cmd.type==="disdici") return "Disdici ombrellone "+pos+" (invia WhatsApp se c'e' un telefono)";
+  if(cmd.type==="canale") return "Canale "+cmd.canale+" per ombrellone "+pos;
   return "";
+}
+
+function findClientMatchesGlobal(nome, cognome, allUmbrellas, disdette) {
+  const q = ((nome||"")+" "+(cognome||"")).trim().toLowerCase();
+  if(q.length<2) return [];
+  const all = (allUmbrellas||[]).flatMap(u=>(u.prenotazioni||[]).map(p=>({...p, _umbId:u.id})));
+  const disdClients = (disdette||[]).map(d=>({...d, _fromDisdette:true}));
+  const combined = [...all, ...disdClients];
+  const byKey = new Map();
+  combined.forEach(p=>{
+    const fn=[p.nome,p.cognome].filter(Boolean).join(" ").toLowerCase();
+    if(!fn) return;
+    if(!fn.includes(q.split(" ")[0])&&!fn.includes(q)) return;
+    const ex=byKey.get(fn);
+    if(!ex||(p.telefono&&!ex.telefono)) byKey.set(fn,p);
+  });
+  return [...byKey.values()].slice(0,5);
 }
 
 function makeUmbrellas(rows,cols){
@@ -1081,7 +1131,12 @@ export default function App() {
       const text = e.results[0][0].transcript;
       const parsed = parseVoiceCommand(text);
       if(!parsed){ setVoiceError("Comando non riconosciuto: \""+text+"\""); return; }
-      setVoiceCommand({...parsed, raw:text});
+      if(parsed.type==="prenota" && parsed.nome){
+        const matches = findClientMatchesGlobal(parsed.nome, parsed.cognome, umbrellas, disdette);
+        setVoiceCommand({...parsed, raw:text, matches});
+      } else {
+        setVoiceCommand({...parsed, raw:text});
+      }
     };
     voiceRecognitionRef.current = recognition;
     recognition.start();
@@ -1101,8 +1156,23 @@ export default function App() {
     const umb = umbrellas.find(u=>u.id===id);
     if(!umb){ setVoiceError("Ombrellone "+cmd.lettera+cmd.posto+" non trovato."); setVoiceCommand(null); return; }
     if(cmd.type==="prenota"){
-      const newPren = {id:makeId(), dal:viewDate, al:viewDate, status:"prenotato", prezzo:"", _single:true, nome:cmd.nome||"", cognome:cmd.cognome||""};
+      const sel = cmd.selectedClient;
+      const newPren = {id:makeId(), dal:viewDate, al:viewDate, status:"prenotato", prezzo:"", _single:true,
+        nome: (sel && sel.nome) || cmd.nome || "",
+        cognome: (sel && sel.cognome) || cmd.cognome || "",
+        telefono: (sel && sel.telefono) || "",
+        indirizzo: (sel && sel.indirizzo) || "",
+        cf: (sel && sel.cf) || "",
+        nota: (sel && sel.nota) || ""
+      };
       setUmbrellas(arr=>arr.map(u=>u.id!==id?u:{...u, prenotazioni:[...(u.prenotazioni||[]), newPren]}));
+      if(newPren.telefono){
+        const nomeCompleto=[newPren.nome,newPren.cognome].filter(Boolean).join(" ");
+        const msg="Gentile "+nomeCompleto+", confermiamo la Sua prenotazione:\n\u26F1\uFE0F Ombrellone "+cmd.lettera+cmd.posto+"\nPeriodo: "+isoLabel(viewDate)+"\n\uD83D\uDD57 Orario stabilimento: 9:00 - 19:00\nGrazie e a presto! \u2600\uFE0F";
+        const tel=newPren.telefono.replace(/\s/g,"").replace(/^\+39/,"");
+        const url="https://wa.me/39"+tel+"?text="+encodeURIComponent(msg);
+        setTimeout(()=>{ if(window.confirm("Vuoi inviare conferma WhatsApp a "+nomeCompleto+"?")) window.open(url,"_blank"); }, 300);
+      }
     } else if(cmd.type==="pagato"||cmd.type==="pagato_pos"){
       setUmbrellas(arr=>arr.map(u=>{
         if(u.id!==id) return u;
@@ -1119,6 +1189,49 @@ export default function App() {
         const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
         if(!existing) return u;
         return {...u, prenotazioni:u.prenotazioni.map(p=>p.id!==existing.id?p:{...p,status:"liberata"})};
+      }));
+    } else if(cmd.type==="occupato"){
+      setUmbrellas(arr=>arr.map(u=>{
+        if(u.id!==id) return u;
+        const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+        if(existing){
+          return {...u, prenotazioni:u.prenotazioni.map(p=>p.id!==existing.id?p:{...p,status:"occupato"})};
+        }
+        const newPren = {id:makeId(), dal:viewDate, al:viewDate, status:"occupato", prezzo:"", _single:true};
+        return {...u, prenotazioni:[...(u.prenotazioni||[]), newPren]};
+      }));
+    } else if(cmd.type==="cancella"){
+      setUmbrellas(arr=>arr.map(u=>{
+        if(u.id!==id) return u;
+        const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+        if(!existing) return u;
+        return {...u, prenotazioni:(u.prenotazioni||[]).filter(p=>p.id!==existing.id)};
+      }));
+    } else if(cmd.type==="disdici"){
+      const existing = (umb.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+      if(existing){
+        const key=[existing.nome,existing.cognome,existing.telefono].filter(Boolean).join("|");
+        setDisdette(prev=>{
+          const idx=prev.findIndex(d=>[d.nome,d.cognome,d.telefono].filter(Boolean).join("|")===key);
+          if(idx>=0){ const n=[...prev]; n[idx]={...n[idx],nome:existing.nome,cognome:existing.cognome,telefono:existing.telefono,indirizzo:existing.indirizzo,cf:existing.cf,count:(n[idx].count||0)+1}; return n; }
+          return [...prev,{nome:existing.nome,cognome:existing.cognome,telefono:existing.telefono,indirizzo:existing.indirizzo,cf:existing.cf,count:1}];
+        });
+        setUmbrellas(arr=>arr.map(u=>u.id!==id?u:{...u, prenotazioni:(u.prenotazioni||[]).filter(pr=>pr.id!==existing.id)}));
+        if(existing.telefono){
+          const nomeCompleto=[existing.nome,existing.cognome].filter(Boolean).join(" ");
+          const label=existing._single?isoLabel(existing.dal):(isoLabel(existing.dal)+" - "+isoLabel(existing.al));
+          const msg="Gentile "+nomeCompleto+", la Sua prenotazione all'ombrellone "+cmd.lettera+cmd.posto+" per il "+label+" e' stata annullata.\n\nSiamo spiacenti per l'inconveniente. La aspettiamo presto! \u2600\uFE0F\n\uD83D\uDD57 Orario stabilimento: 9:00 - 19:00";
+          const tel=existing.telefono.replace(/\s/g,"").replace(/^\+39/,"");
+          const url="https://wa.me/39"+tel+"?text="+encodeURIComponent(msg);
+          setTimeout(()=>{ if(window.confirm("Inviare messaggio di disdetta a "+nomeCompleto+"?")) window.open(url,"_blank"); }, 300);
+        }
+      }
+    } else if(cmd.type==="canale"){
+      setUmbrellas(arr=>arr.map(u=>{
+        if(u.id!==id) return u;
+        const existing = (u.prenotazioni||[]).find(p=>p._single?p.dal===viewDate:dateInRange(viewDate,p.dal,p.al));
+        if(!existing) return u;
+        return {...u, prenotazioni:u.prenotazioni.map(p=>p.id!==existing.id?p:{...p,canale:cmd.canale})};
       }));
     }
     setVoiceCommand(null);
@@ -1151,6 +1264,7 @@ export default function App() {
   const [pinInput,setPinInput] = useState("");
   const [pinOk,setPinOk] = useState(false);
   const [isAdmin,setIsAdmin] = useState(false);
+  const [voiceEnabled,setVoiceEnabled] = useState(()=>{ try { return localStorage.getItem("voiceEnabled")==="true"; } catch(e) { return false; } });
   const [pinError,setPinError] = useState(false);
   const [pinTentativi,setPinTentativi] = useState(0);
   const [pinBloccato,setPinBloccato] = useState(false);
@@ -1373,6 +1487,7 @@ export default function App() {
         {isAdmin&&<button className="tbtn" onClick={()=>setShowGruppi(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>👥</span> Gruppi</button>}
         {isAdmin&&<button className="tbtn" onClick={()=>setShowDB(true)}      style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>👥</span> Clienti</button>}
         {isAdmin&&<button className="tbtn" onClick={()=>setShowSummary(true)} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>📊</span> Riepilogo</button>}
+        {isAdmin&&<button className="tbtn" onClick={()=>{const nv=!voiceEnabled;setVoiceEnabled(nv);try{localStorage.setItem("voiceEnabled",String(nv));}catch(e){}}} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11,background:voiceEnabled?"rgba(40,167,69,0.3)":undefined,color:voiceEnabled?"#fff":undefined}}><span style={{fontSize:13}}>🎤</span> {voiceEnabled?"Vocale ON":"Vocale OFF"}</button>}
         <button className="tbtn" onClick={handlePrintGrid} style={{...iconBtn(false),gap:4,flexShrink:0,padding:"6px 10px",fontSize:11}}><span style={{fontSize:13}}>🖨️</span> Stampa</button>
         {isAdmin&&<button onClick={()=>setShowGrid(true)} style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.18)",border:"1px solid rgba(255,255,255,0.4)",borderRadius:10,padding:"6px 10px",cursor:"pointer",flexShrink:0,color:"#fff"}}>
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="6" height="6" rx="1.2"/><rect x="10" y="0" width="6" height="6" rx="1.2"/><rect x="0" y="10" width="6" height="6" rx="1.2"/><rect x="10" y="10" width="6" height="6" rx="1.2"/></svg>
@@ -2222,23 +2337,45 @@ Siamo spiacenti per l'inconveniente. La aspettiamo presto! ☀️
         />
       )}
       {/* PULSANTE COMANDI VOCALI */}
-      <button
+      {isAdmin && voiceEnabled && <button
         onClick={startVoiceCommand}
         disabled={voiceListening}
         style={{position:"fixed",bottom:24,right:24,width:64,height:64,borderRadius:"50%",border:"none",background:voiceListening?"linear-gradient(135deg,#dc3545,#a71d2a)":"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",fontSize:26,cursor:"pointer",boxShadow:"0 6px 20px rgba(0,0,0,0.3)",zIndex:5000,display:"flex",alignItems:"center",justifyContent:"center"}}>
         {voiceListening ? "\uD83D\uDD34" : "\uD83C\uDFA4"}
-      </button>
+      </button>}
 
       {voiceCommand && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:6000}} onClick={()=>setVoiceCommand(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px 22px",width:340,maxWidth:"90vw",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:10}}>\uD83C\uDFA4</div>
-            <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Ho capito</div>
-            <div style={{fontSize:16,fontWeight:"bold",color:"#1a2e4a",marginBottom:20}}>{describeVoiceCommand(voiceCommand)}</div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setVoiceCommand(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"2px solid #e0e0e0",background:"#fff",color:"#555",cursor:"pointer",fontFamily:"inherit",fontSize:14}}>Annulla</button>
-              <button onClick={executeVoiceCommand} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:"bold"}}>\u2713 Conferma</button>
-            </div>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px 22px",width:340,maxWidth:"90vw",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)",textAlign:"center"}}>
+            {voiceCommand.type==="prenota" && voiceCommand.matches && voiceCommand.matches.length>0 && voiceCommand.selectedClient===undefined ? (
+              <div>
+                <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Trovati in archivio, chi intendi?</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                  {voiceCommand.matches.map((m,i)=>(
+                    <button key={i} onClick={()=>setVoiceCommand(prev=>({...prev, selectedClient:m}))}
+                      style={{padding:"10px 12px",borderRadius:10,border:"2px solid #0d6efd",background:"#e8f0ff",color:"#0d6efd",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:"bold",textAlign:"left",display:"flex",justifyContent:"space-between"}}>
+                      <span>{[m.nome,m.cognome].filter(Boolean).join(" ")}</span>
+                      {m.telefono && <span style={{fontWeight:"normal",fontSize:12}}>{m.telefono}</span>}
+                    </button>
+                  ))}
+                  <button onClick={()=>setVoiceCommand(prev=>({...prev, selectedClient:null}))}
+                    style={{padding:"10px 12px",borderRadius:10,border:"2px solid #888",background:"#fafafa",color:"#555",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+                    Nessuno di questi (nuovo cliente)
+                  </button>
+                </div>
+                <button onClick={()=>setVoiceCommand(null)} style={{width:"100%",padding:"11px 0",borderRadius:12,border:"2px solid #e0e0e0",background:"#fff",color:"#555",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>Annulla</button>
+              </div>
+            ) : (
+              <div>
+                <div style={{fontSize:32,marginBottom:10}}>\uD83C\uDFA4</div>
+                <div style={{fontSize:11,color:"#888",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Ho capito</div>
+                <div style={{fontSize:16,fontWeight:"bold",color:"#1a2e4a",marginBottom:20}}>{describeVoiceCommand(voiceCommand)}</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setVoiceCommand(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"2px solid #e0e0e0",background:"#fff",color:"#555",cursor:"pointer",fontFamily:"inherit",fontSize:14}}>Annulla</button>
+                  <button onClick={executeVoiceCommand} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#1a5c9a,#0d3b6e)",color:"#fff",cursor:"pointer",fontFamily:"inherit",fontSize:14,fontWeight:"bold"}}>\u2713 Conferma</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
