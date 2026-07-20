@@ -31,6 +31,8 @@ const fullName = (u) => {
 const dateInRange = (ds,dal,al) => dal && al && ds>=dal && ds<=al;
 
 const ITA_NUM = {zero:0,uno:1,due:2,tre:3,quattro:4,cinque:5,sei:6,sette:7,otto:8,nove:9,dieci:10,undici:11,dodici:12,tredici:13,quattordici:14,quindici:15,sedici:16,diciassette:17,diciotto:18,diciannove:19,venti:20,ventuno:21,ventidue:22,ventitre:23,ventitre:23,ventiquattro:24,venticinque:25,ventisei:26,ventisette:27,ventotto:28,ventinove:29,trenta:30,trentuno:31};
+const MESI_ITA = {gennaio:0,febbraio:1,marzo:2,aprile:3,maggio:4,giugno:5,giugno:5,luglio:6,agosto:7,settembre:8,ottobre:9,novembre:10,dicembre:11};
+const MESI_LABELS = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 const wordToNumber = (w) => { if(/^\d+$/.test(w)) return parseInt(w,10); return ITA_NUM[(w||"").toLowerCase()] ?? null; };
 const capitalizeWord = (w) => w ? w.charAt(0).toUpperCase()+w.slice(1).toLowerCase() : "";
 
@@ -73,11 +75,17 @@ function parseVoiceCommand(rawText) {
 
   if (tokens.includes("vai") && tokens.includes("giorno")) {
     const idx = tokens.indexOf("giorno");
+    let day = null;
     for (let i=idx+1;i<tokens.length;i++){
       const num = wordToNumber(tokens[i]);
-      if(num!=null) return {type:"goto", day:num};
+      if(num!=null){ day = num; break; }
     }
-    return null;
+    if(day==null) return null;
+    let month = null;
+    for (let i=0;i<tokens.length;i++){
+      if(MESI_ITA[tokens[i]]!=null){ month = MESI_ITA[tokens[i]]; break; }
+    }
+    return {type:"goto", day, month};
   }
 
   if (tokens.includes("prenota")) {
@@ -143,7 +151,7 @@ function parseVoiceCommand(rawText) {
 function describeVoiceCommand(cmd) {
   if(!cmd) return "";
   const pos = cmd.lettera && cmd.posto ? (cmd.lettera+""+cmd.posto) : "";
-  if(cmd.type==="goto") return "Vai al giorno "+cmd.day;
+  if(cmd.type==="goto") return "Vai al giorno "+cmd.day+(cmd.month!=null?(" "+MESI_LABELS[cmd.month]):"");
   if(cmd.type==="prenota") return "Prenota ombrellone "+pos+(cmd.nome?(" per "+cmd.nome+(cmd.cognome?" "+cmd.cognome:"")):"")+(cmd.selectedClient&&cmd.selectedClient.telefono?(" \uD83D\uDCDE "+cmd.selectedClient.telefono):"");
   if(cmd.type==="pagato") return "Pagato ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
   if(cmd.type==="pagato_pos") return "Pagato POS ombrellone "+pos+(cmd.importo!=null?(" - \u20AC"+cmd.importo):"");
@@ -1147,7 +1155,15 @@ export default function App() {
     if(!cmd) return;
     if(cmd.type==="goto"){
       const base = new Date(viewDate+"T00:00:00");
-      const newDate = toDateStr(base.getFullYear(), base.getMonth(), cmd.day);
+      const month = cmd.month!=null ? cmd.month : base.getMonth();
+      let year = base.getFullYear();
+      if(cmd.month!=null){
+        const candidate = new Date(year, month, cmd.day);
+        const today = new Date(); today.setHours(0,0,0,0);
+        const diffDays = (today - candidate) / 86400000;
+        if(diffDays > 200) year += 1;
+      }
+      const newDate = toDateStr(year, month, cmd.day);
       setSelectedDate(newDate);
       setVoiceCommand(null);
       return;
