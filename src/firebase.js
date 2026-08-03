@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, onSnapshot } from "firebase/firestore";
+import { initializeFirestore, getFirestore, doc, setDoc, getDoc, collection, getDocs, updateDoc, onSnapshot, runTransaction } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDBjX7gNfUzVgjYqjJb7bjVtSyAoAESdGU",
@@ -20,21 +20,45 @@ export const db = initializeFirestore(app, isSafariOrIOS ? {
 const DOC_REF = (db_instance) => doc(db_instance, "lido", "dati");
 let lastSaveTime = 0;
 
-export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa) {
+export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, modifiedIds) {
   try {
     const clean = (obj) => JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
-    const data = { umbrellas: clean(umbrellas), updatedAt: Date.now() };
-    if (rows) data.rows = rows;
-    if (cols) data.cols = cols;
-    if (nameFontSize) data.nameFontSize = nameFontSize;
-    if (cellHeight) data.cellHeight = cellHeight;
-    if (disdette && disdette.length) data.disdette = disdette;
-    if (gruppi) data.gruppi = gruppi;
-    if (disponibilita) data.disponibilita = disponibilita;
-    if (listaAttesa) data.listaAttesa = listaAttesa;
-    await setDoc(DOC_REF(db_instance), data);
+    const localUmbrellas = clean(umbrellas);
+    const idsToApply = modifiedIds && modifiedIds.size ? modifiedIds : null;
+
+    await runTransaction(db_instance, async (tx) => {
+      const ref = DOC_REF(db_instance);
+      const snap = await tx.get(ref);
+      const remote = snap.exists() ? snap.data() : {};
+      const remoteUmbrellas = remote.umbrellas || [];
+
+      let mergedUmbrellas;
+      if (idsToApply) {
+        const map = new Map(remoteUmbrellas.map(u => [u.id, u]));
+        for (const u of localUmbrellas) {
+          if (idsToApply.has(u.id) || !map.has(u.id)) map.set(u.id, u);
+        }
+        mergedUmbrellas = Array.from(map.values());
+      } else {
+        mergedUmbrellas = localUmbrellas;
+      }
+
+      const data = { umbrellas: mergedUmbrellas, updatedAt: Date.now() };
+      if (rows) data.rows = rows;
+      if (cols) data.cols = cols;
+      if (nameFontSize) data.nameFontSize = nameFontSize;
+      if (cellHeight) data.cellHeight = cellHeight;
+      if (cellWidth) data.cellWidth = cellWidth;
+      if (disdette && disdette.length) data.disdette = disdette;
+      if (gruppi) data.gruppi = gruppi;
+      if (disponibilita) data.disponibilita = disponibilita;
+      if (listaAttesa) data.listaAttesa = listaAttesa;
+
+      tx.set(ref, data);
+    });
+
     lastSaveTime = Date.now();
-    console.log("Salvato su Firebase!");
+    console.log("Salvato su Firebase (merge transazionale)!");
     return true;
   } catch (e) {
     console.error("Errore salvataggio:", e);

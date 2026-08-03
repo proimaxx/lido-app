@@ -985,6 +985,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const isRemoteUpdate = useRef(false);
   const isDirty = useRef(false); // true = modifiche locali non ancora confermate su Firestore
+  const prevUmbrellasRef = useRef([]); // ultima versione di umbrellas conosciuta (per capire cosa e' cambiato)
 
   // Carica meteo
   useEffect(()=>{
@@ -1073,11 +1074,18 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return;
-    if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
+    if (isRemoteUpdate.current) { isRemoteUpdate.current = false; prevUmbrellasRef.current = umbrellas; return; }
     isDirty.current = true;
     setSaving(true);
     const t = setTimeout(() => {
-      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa).finally(() => { setSaving(false); isDirty.current = false; });
+      const prevMap = new Map((prevUmbrellasRef.current || []).map(u => [u.id, u]));
+      const changedIds = new Set();
+      for (const u of umbrellas) {
+        const before = prevMap.get(u.id);
+        if (!before || JSON.stringify(before) !== JSON.stringify(u)) changedIds.add(u.id);
+      }
+      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, changedIds)
+        .finally(() => { setSaving(false); isDirty.current = false; prevUmbrellasRef.current = umbrellas; });
     }, 800);
     return () => clearTimeout(t);
   }, [umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa]);
