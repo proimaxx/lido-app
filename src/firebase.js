@@ -20,11 +20,38 @@ export const db = initializeFirestore(app, isSafariOrIOS ? {
 const DOC_REF = (db_instance) => doc(db_instance, "lido", "dati");
 let lastSaveTime = 0;
 
-export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, modifiedIds) {
+export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, changed) {
   try {
     const clean = (obj) => JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
     const localUmbrellas = clean(umbrellas);
-    const idsToApply = modifiedIds && modifiedIds.size ? modifiedIds : null;
+    const localListaAttesa = clean(listaAttesa || []);
+    const localGruppi = clean(gruppi || []);
+    const localDisdette = clean(disdette || []);
+    const idsToApply = changed?.umbrellas && changed.umbrellas.size ? changed.umbrellas : null;
+    const disdetteKey = d => d.telefono || [d.nome, d.cognome, d.telefono].filter(Boolean).join("|");
+
+    const mergeById = (remoteList, localList, changedIdSet, deletedIdSet) => {
+      const map = new Map((remoteList || []).map(u => [u.id, u]));
+      for (const u of localList) {
+        if (!changedIdSet || changedIdSet.has(u.id) || !map.has(u.id)) map.set(u.id, u);
+      }
+      if (deletedIdSet) {
+        for (const id of deletedIdSet) map.delete(id);
+      }
+      return Array.from(map.values());
+    };
+
+    const mergeByKey = (remoteList, localList, changedKeySet, keyFn, deletedKeySet) => {
+      const map = new Map((remoteList || []).map(u => [keyFn(u), u]));
+      for (const u of localList) {
+        const k = keyFn(u);
+        if (!changedKeySet || changedKeySet.has(k) || !map.has(k)) map.set(k, u);
+      }
+      if (deletedKeySet) {
+        for (const k of deletedKeySet) map.delete(k);
+      }
+      return Array.from(map.values());
+    };
 
     await runTransaction(db_instance, async (tx) => {
       const ref = DOC_REF(db_instance);
@@ -49,16 +76,29 @@ export async function saveUmbrellas(db_instance, umbrellas, rows, cols, nameFont
       if (nameFontSize) data.nameFontSize = nameFontSize;
       if (cellHeight) data.cellHeight = cellHeight;
       if (cellWidth) data.cellWidth = cellWidth;
-      if (disdette && disdette.length) data.disdette = disdette;
-      if (gruppi) data.gruppi = gruppi;
-      if (disponibilita) data.disponibilita = disponibilita;
-      if (listaAttesa) data.listaAttesa = listaAttesa;
 
-      tx.set(ref, data);
+      const hasDisdetteDeletes = changed?.disdetteDeleted && changed.disdetteDeleted.size;
+      const hasGruppiDeletes = changed?.gruppiDeleted && changed.gruppiDeleted.size;
+      const hasListaDeletes = changed?.listaAttesaDeleted && changed.listaAttesaDeleted.size;
+
+      if (localDisdette.length || (changed?.disdette && changed.disdette.size) || hasDisdetteDeletes) {
+        data.disdette = mergeByKey(remote.disdette, localDisdette, changed?.disdette, disdetteKey, changed?.disdetteDeleted);
+      }
+      if (localGruppi.length || (changed?.gruppi && changed.gruppi.size) || hasGruppiDeletes) {
+        data.gruppi = mergeById(remote.gruppi, localGruppi, changed?.gruppi, changed?.gruppiDeleted);
+      }
+      if (localListaAttesa.length || (changed?.listaAttesa && changed.listaAttesa.size) || hasListaDeletes) {
+        data.listaAttesa = mergeById(remote.listaAttesa, localListaAttesa, changed?.listaAttesa, changed?.listaAttesaDeleted);
+      }
+      if (disponibilita && changed?.disponibilitaChanged) {
+        data.disponibilita = disponibilita;
+      }
+
+      tx.set(ref, data, { merge: true });
     });
 
     lastSaveTime = Date.now();
-    console.log("Salvato su Firebase (merge transazionale)!");
+    console.log("Salvato su Firebase (merge transazionale completo)!");
     return true;
   } catch (e) {
     console.error("Errore salvataggio:", e);

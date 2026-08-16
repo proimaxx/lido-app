@@ -986,6 +986,10 @@ export default function App() {
   const isRemoteUpdate = useRef(false);
   const isDirty = useRef(false); // true = modifiche locali non ancora confermate su Firestore
   const prevUmbrellasRef = useRef([]); // ultima versione di umbrellas conosciuta (per capire cosa e' cambiato)
+  const prevListaAttesaRef = useRef([]);
+  const prevGruppiRef = useRef([]);
+  const prevDisdetteRef = useRef([]);
+  const prevDisponibilitaRef = useRef(null);
 
   // Carica meteo
   useEffect(()=>{
@@ -1074,7 +1078,15 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return;
-    if (isRemoteUpdate.current) { isRemoteUpdate.current = false; prevUmbrellasRef.current = umbrellas; return; }
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      prevUmbrellasRef.current = umbrellas;
+      prevListaAttesaRef.current = listaAttesa;
+      prevGruppiRef.current = gruppi;
+      prevDisdetteRef.current = disdette;
+      prevDisponibilitaRef.current = disponibilita;
+      return;
+    }
     isDirty.current = true;
     setSaving(true);
     const t = setTimeout(() => {
@@ -1084,8 +1096,62 @@ export default function App() {
         const before = prevMap.get(u.id);
         if (!before || JSON.stringify(before) !== JSON.stringify(u)) changedIds.add(u.id);
       }
-      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, changedIds)
-        .finally(() => { setSaving(false); isDirty.current = false; prevUmbrellasRef.current = umbrellas; });
+
+      const prevListaMap = new Map((prevListaAttesaRef.current || []).map(x => [x.id, x]));
+      const currentListaIds = new Set(listaAttesa.map(x => x.id));
+      const changedListaAttesaIds = new Set();
+      for (const x of listaAttesa) {
+        const before = prevListaMap.get(x.id);
+        if (!before || JSON.stringify(before) !== JSON.stringify(x)) changedListaAttesaIds.add(x.id);
+      }
+      const deletedListaAttesaIds = new Set(
+        (prevListaAttesaRef.current || []).map(x => x.id).filter(id => !currentListaIds.has(id))
+      );
+
+      const prevGruppiMap = new Map((prevGruppiRef.current || []).map(x => [x.id, x]));
+      const currentGruppiIds = new Set(gruppi.map(x => x.id));
+      const changedGruppiIds = new Set();
+      for (const x of gruppi) {
+        const before = prevGruppiMap.get(x.id);
+        if (!before || JSON.stringify(before) !== JSON.stringify(x)) changedGruppiIds.add(x.id);
+      }
+      const deletedGruppiIds = new Set(
+        (prevGruppiRef.current || []).map(x => x.id).filter(id => !currentGruppiIds.has(id))
+      );
+
+      const disdetteKey = d => d.telefono || [d.nome, d.cognome, d.telefono].filter(Boolean).join("|");
+      const prevDisdetteMap = new Map((prevDisdetteRef.current || []).map(x => [disdetteKey(x), x]));
+      const currentDisdetteKeys = new Set(disdette.map(disdetteKey));
+      const changedDisdetteKeys = new Set();
+      for (const x of disdette) {
+        const before = prevDisdetteMap.get(disdetteKey(x));
+        if (!before || JSON.stringify(before) !== JSON.stringify(x)) changedDisdetteKeys.add(disdetteKey(x));
+      }
+      const deletedDisdetteKeys = new Set(
+        (prevDisdetteRef.current || []).map(disdetteKey).filter(k => !currentDisdetteKeys.has(k))
+      );
+
+      const disponibilitaChanged = JSON.stringify(disponibilita) !== JSON.stringify(prevDisponibilitaRef.current);
+
+      saveUmbrellas(db, umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa, {
+        umbrellas: changedIds,
+        listaAttesa: changedListaAttesaIds,
+        listaAttesaDeleted: deletedListaAttesaIds,
+        gruppi: changedGruppiIds,
+        gruppiDeleted: deletedGruppiIds,
+        disdette: changedDisdetteKeys,
+        disdetteDeleted: deletedDisdetteKeys,
+        disponibilitaChanged,
+      })
+        .finally(() => {
+          setSaving(false);
+          isDirty.current = false;
+          prevUmbrellasRef.current = umbrellas;
+          prevListaAttesaRef.current = listaAttesa;
+          prevGruppiRef.current = gruppi;
+          prevDisdetteRef.current = disdette;
+          prevDisponibilitaRef.current = disponibilita;
+        });
     }, 800);
     return () => clearTimeout(t);
   }, [umbrellas, rows, cols, nameFontSize, cellHeight, cellWidth, disdette, gruppi, disponibilita, listaAttesa]);
